@@ -16,7 +16,9 @@ neuroml-widgets
 
 
 
-Jupyter widgets for use with NeuroML
+Prototyping Jupyter widgets for use with NeuroML.
+
+**WIP**
 
 
 * Documentation: https://neuroml-widgets.readthedocs.io.
