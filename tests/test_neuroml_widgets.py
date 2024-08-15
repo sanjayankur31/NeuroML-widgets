@@ -4,8 +4,7 @@
 
 import pytest
 
-
-from neuroml_widgets import neuroml_widgets
+import neuroml_widgets
 
 
 @pytest.fixture
