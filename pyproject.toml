@@ -12,7 +12,7 @@ exclude = [
 ignore = ["F403", "F405"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=pyneuroml --cov-report term --cov-report xml:coverage.xml -n auto"
+addopts = "--cov=neuroml_widgets --cov-report term --cov-report xml:coverage.xml -n auto"
 
 [tool.coverage.run]
 omit = [
