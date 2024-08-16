@@ -1,5 +1,5 @@
 """
-
+General widgets for use with all NeuroML components.
 
 File: neuroml_widgets/component.py
 
@@ -18,15 +18,14 @@ logger.setLevel(logging.ERROR)
 logger.debug(f"Logger setup for {__name__}")
 
 
-def component2widget(
+def component_explorer(
     component: neuroml.nml.nml.GeneratedsSuperSuper,
     max_members: int = 10,
     tabbed_list: typing.List[str] = [],
 ):
     """Create a widget from a NeuroML component object.
 
-    This is an ordinary widget where each object is recursively included into
-    an Accordion widget.
+    Recursively explore a NeuroML component.
 
     :param component: NeuroML component object to explore
     :type component: object
@@ -58,15 +57,23 @@ def component2widget(
     for m, contents in members.items():
         # can either be a string, or an object, or a list of objects
         cont = contents["members"]
+        cont_type = contents["type"]
+        logger.debug(f"Type is {cont_type}")
         if cont:
             if not isinstance(cont, list):
                 if isinstance(cont, (str, float, int)):
                     logger.debug(f"Got a string/float member: {m}")
-                    field_members.append(f"<li><b>{m}</b>: {contents['members']}</li>")
+                    if cont_type.startswith("Nml2Quantity"):
+                        escaped_cont = contents["members"].replace("_", "\\_")
+                    else:
+                        escaped_cont = contents["members"]
+                    field_members.append(f"<li><b>{m}</b>: {escaped_cont}</li>")
                 elif isinstance(cont, object):
                     logger.debug(f"Got an object member: {m}")
                     accordion_widgets.append(
-                        component2widget(contents["members"], max_members, tabbed_list)
+                        component_explorer(
+                            contents["members"], max_members, tabbed_list
+                        )
                     )
                 else:
                     logger.error(f"What did we get? {m}")
@@ -78,7 +85,7 @@ def component2widget(
                     if processed_members < max_members:
                         logger.debug(f"Processing list member: {m}")
                         multi_widgets.append(
-                            component2widget(x, max_members, tabbed_list)
+                            component_explorer(x, max_members, tabbed_list)
                         )
                     else:
                         field_members.append(
@@ -86,8 +93,8 @@ def component2widget(
                         )
                         break
                     processed_members += 1
-                if contents["type"] in tabbed_list:
-                    tabbed_widgets[contents["type"]] = ipywidgets.VBox(multi_widgets)
+                if cont_type in tabbed_list:
+                    tabbed_widgets[cont_type] = ipywidgets.VBox(multi_widgets)
                 else:
                     accordion_widgets.extend(multi_widgets)
 
@@ -99,15 +106,20 @@ def component2widget(
             fields_html_string += m
         fields_html_string += "</ul></br>"
 
-        widgets.append(ipywidgets.HTML(value=fields_html_string))
+        widgets.append(ipywidgets.HTMLMath(value=fields_html_string))
 
     # if tabs are in use, put the untabbed ones in a new "other" tab
     if len(tabbed_widgets) > 0:
         tabbed_widgets["Other"] = ipywidgets.VBox(accordion_widgets)
+        titles = []
+        # add number of entries to each tab title
+        for k, v in tabbed_widgets.items():
+            titles.append(f"{k} ({len(v.children)})")
+
         widgets.append(
             ipywidgets.Tab(
                 children=list(tabbed_widgets.values()),
-                titles=list(tabbed_widgets.keys()),
+                titles=titles,
             )
         )
     # otherwise, use a flat list of accordions
