@@ -11,6 +11,8 @@ import typing
 
 import ipywidgets
 import neuroml
+from IPython.display import display
+from pyneuroml.utils.units import split_nml2_quantity
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -137,3 +139,71 @@ def component_explorer(
         if len(widgets) > 0
         else None
     )
+
+
+def component_editor(component):
+    """Widget to edit a component.
+
+    This widget only edits the current component and does not recursively open
+    objects it contains.
+
+    :param component: TODO
+    :returns: TODO
+
+    """
+
+    logger.debug(f"Processing {component.__class__.__name__}")
+
+    def update_object(change):
+        """Change handler"""
+        # get units from description
+        description_parts = change["owner"].description.split(" (")
+        attribute = description_parts[0]
+        units = description_parts[1].split(")")[0]
+
+        new_value = f"{change['new']} {units}"
+        # set new value
+        setattr(component, attribute, new_value)
+
+    members = component.info(show_contents=True, return_format="dict")
+    logger.debug(f"Members are {members}")
+    try:
+        if members["id"] is not None:
+            title = f"{component.__class__.__name__}: {members.pop('id')['members']}"
+        else:
+            title = f"{component.__class__.__name__}"
+    except KeyError:
+        title = f"{component.__class__.__name__}"
+    logger.debug(f"Got title: {title}")
+
+    # create widgets
+    widgets = []
+    for m, contents in members.items():
+        # can either be a string, or an object, or a list of objects
+        cont = contents["members"]
+        cont_type = contents["type"]
+        logger.debug(f"Type is {cont_type}")
+        if cont:
+            if not isinstance(cont, list):
+                if isinstance(cont, (str, float, int)):
+                    logger.debug(f"Got a string/float member: {m}")
+                    if cont_type.startswith("Nml2Quantity"):
+                        value, units = split_nml2_quantity(getattr(component, m))
+                        widget = ipywidgets.FloatSlider(
+                            value=value,
+                            description=f"{m} ({units})",
+                            readout_format=".2f",
+                        )
+                        widget.observe(update_object, names="value")
+                        widgets.append(widget)
+
+    # remove empty widgets
+    widgets = [x for x in widgets if x is not None]
+
+    if len(widgets) > 0:
+        logger.debug(widgets)
+        logger.debug(f"There are {len(widgets)} widgets")
+        accordion = ipywidgets.Accordion(
+            children=[ipywidgets.VBox(widgets)], titles=[title]
+        )
+        display(accordion)
