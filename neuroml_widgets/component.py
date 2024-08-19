@@ -14,10 +14,17 @@ import neuroml
 from IPython.display import display
 from pyneuroml.utils.units import split_nml2_quantity
 
+from .debug import debug_view
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 logger.debug(f"Logger setup for {__name__}")
+
+
+# store widget states for edited components
+# key: owner: (init magnitude, init unit)
+widget_states: typing.Dict[str, typing.Tuple[str, str]] = {}
 
 
 def component_explorer(
@@ -65,11 +72,7 @@ def component_explorer(
             if not isinstance(cont, list):
                 if isinstance(cont, (str, float, int)):
                     logger.debug(f"Got a string/float member: {m}")
-                    if cont_type.startswith("Nml2Quantity"):
-                        escaped_cont = contents["members"].replace("_", "\\_")
-                    else:
-                        escaped_cont = contents["members"]
-                    field_members.append(f"<li><b>{m}</b>: {escaped_cont}</li>")
+                    field_members.append(f"<li><b>{m}</b>: {cont}</li>")
                 elif isinstance(cont, object):
                     logger.debug(f"Got an object member: {m}")
                     accordion_widgets.append(
@@ -144,26 +147,37 @@ def component_explorer(
 def component_editor(component):
     """Widget to edit a component.
 
-    This widget only edits the current component and does not recursively open
-    objects it contains.
+    This widget only allows editing top level attributes of the component and
+    does not recursively open objects it contains. It does not recurse through
+    the objects that the component members may contain.
 
-    :param component: TODO
-    :returns: TODO
-
+    :param component: NeuroML component object
     """
 
     logger.debug(f"Processing {component.__class__.__name__}")
 
+    @debug_view.capture()
     def update_object(change):
         """Change handler"""
         # get units from description
-        description_parts = change["owner"].description.split(" (")
-        attribute = description_parts[0]
-        units = description_parts[1].split(")")[0]
+        owner_widget = change["owner"]
+        owner_widget_description = owner_widget.description
+        init_magnitude = float(widget_states[owner_widget_description][0])
+        init_units = widget_states[owner_widget_description][1]
 
-        new_value = f"{change['new']} {units}"
-        # set new value
-        setattr(component, attribute, new_value)
+        new_magnitude = float(change["new"])
+        new_value = f"{new_magnitude} {init_units}"
+        # set new values
+        print("Setting new values")
+        setattr(component, owner_widget_description, new_value)
+        component.validate()
+
+        # TODO: indicate change, does not currently work
+        try:
+            if str(new_magnitude) != str(init_magnitude):
+                owner_widget.style.background = "yellow"
+        except KeyError:
+            pass
 
     members = component.info(show_contents=True, return_format="dict")
     logger.debug(f"Members are {members}")
@@ -174,7 +188,7 @@ def component_editor(component):
             title = f"{component.__class__.__name__}"
     except KeyError:
         title = f"{component.__class__.__name__}"
-    logger.debug(f"Got title: {title}")
+    # logger.debug(f"Got title: {title}")
 
     # create widgets
     widgets = []
@@ -189,16 +203,30 @@ def component_editor(component):
                     logger.debug(f"Got a string/float member: {m}")
                     if cont_type.startswith("Nml2Quantity"):
                         value, units = split_nml2_quantity(getattr(component, m))
-                        widget = ipywidgets.FloatSlider(
-                            value=value,
-                            description=f"{m} ({units})",
-                            readout_format=".2f",
+                        widget_description = f"{m}"
+                        logger.debug(f"New widget created: {widget_description}")
+                        widget = ipywidgets.FloatText(
+                            value=float(value),
+                            description=widget_description,
+                            disabled=False,
+                            style={"description_width": "initial"},
+                            # layout=ipywidgets.Layout(width="25%")
+                            # description=widget_description,
+                            # readout_format=".2f",
                         )
                         widget.observe(update_object, names="value")
-                        widgets.append(widget)
+                        box_widget = ipywidgets.HBox([widget, ipywidgets.Label(units)])
+                        widgets.append(box_widget)
+
+                        # track initial value for changing widget slide when
+                        # it's changed, and to reset
+                        if widget_description not in widget_states:
+                            widget_states[widget_description] = (value, units)
 
     # remove empty widgets
     widgets = [x for x in widgets if x is not None]
+
+    logger.debug(f"Widget states: {widget_states}")
 
     if len(widgets) > 0:
         logger.debug(widgets)
